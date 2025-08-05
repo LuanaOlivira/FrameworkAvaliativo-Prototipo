@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Framework Avaliativo com IA Assistiva</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+            color: #343a40;
+        }
+        .app-section {
+            transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out;
+            width: 100%;
+        }
+        .app-section.hidden {
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: none;
+            position: absolute;
+            top: 0; /* Garante que as seções ocultas não ocupem espaço */
+            left: 0;
+        }
+        .page-header h1 {
+            letter-spacing: -0.025em;
+        }
+        .criteria-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+        .criteria-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 550px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 45vh;
+            max-height: 400px;
+        }
+        .radio-btn-group input:checked + label {
+            background-color: #004E64;
+            color: white;
+            border-color: #004E64;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .radio-btn-group label {
+            transition: all 0.2s ease-in-out;
+        }
+        .alert-modal-container.hidden, .chatbot-container.hidden, .accessibility-modal-container.hidden {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        .alert-modal-container, .chatbot-container, .accessibility-modal-container {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        #chat-messages {
+            scroll-behavior: smooth;
+        }
+        .chat-message {
+            animation: slideInUp 0.4s ease-in-out;
+        }
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .typing-indicator span {
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+        .ai-suggestion {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .step-item .step-circle {
+            background-color: #e2e8f0;
+            color: #475569;
+            transition: all 0.3s ease;
+        }
+        .step-item .step-line {
+            background-color: #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        .step-item.active .step-circle {
+            background-color: #256EFF;
+            color: white;
+        }
+        .step-item.completed .step-circle {
+            background-color: #004E64;
+            color: white;
+        }
+        .step-item.active p {
+            color: #256EFF;
+        }
+        .step-item.completed p {
+            color: #004E64;
+        }
+        .step-item.completed + .step-line {
+            background-color: #004E64;
+        }
+
+        /* Styles for Onboarding Tour */
+        .tour-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tour-popup {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 400px;
+            position: relative;
+            z-index: 9999;
+        }
+        .tour-highlight {
+            position: relative;
+            z-index: 9999;
+            box-shadow: 0 0 0 5px rgba(37, 110, 255, 0.5); /* Highlight color */
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <header class="absolute top-0 right-0 p-4 z-30 flex items-center space-x-4">
+        <nav class="flex space-x-4 text-sm font-semibold">
+            <button id="nav-home" class="nav-btn p-2 rounded-md bg-[#004E64] text-white">Home</button>
+            <button id="nav-about" class="nav-btn p-2 rounded-md text-slate-500 hover:bg-slate-200">Sobre</button>
+            <button id="nav-support" class="nav-btn p-2 rounded-md text-slate-500 hover:bg-slate-200">Suporte</button>
+        </nav>
+        <button id="accessibility-btn" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM6.75 8.25a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h.5a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-.5zM12.75 8.25a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h.5a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-.5zM10 13.5a.75.75 0 00-.75.75v.5a.75.75 0 00.75.75h.5a.75.75 0 00.75-.75v-.5a.75.75 0 00-.75-.75h-.5z" clip-rule="evenodd" />
+            </svg>
+            <span class="ml-2 hidden sm:inline">Acessibilidade</span>
+        </button>
+        <div id="language-switcher" class="flex space-x-2 text-sm font-semibold">
+            <button data-lang="pt" class="lang-btn p-2 rounded-md">PT</button>
+            <button data-lang="en" class="lang-btn p-2 rounded-md">EN</button>
+        </div>
+    </header>
+
+    <div id="app" class="container mx-auto p-4 sm:p-6 lg:p-8 mt-10 relative">
+        <div id="stepper" class="w-full max-w-2xl mx-auto mb-12">
+            <div class="flex items-center">
+                <div id="step-0" class="step-item flex-1 text-center">
+                    <div class="step-circle w-8 h-8 mx-auto rounded-full flex items-center justify-center font-bold border-2 border-transparent">1</div>
+                    <p id="step-0-label" class="mt-2 text-sm font-semibold text-slate-500"></p>
+                </div>
+                <div class="step-line flex-1 h-0.5 bg-slate-200"></div>
+                <div id="step-1" class="step-item flex-1 text-center">
+                     <div class="step-circle w-8 h-8 mx-auto rounded-full flex items-center justify-center font-bold border-2 border-transparent">2</div>
+                    <p id="step-1-label" class="mt-2 text-sm font-semibold text-slate-500"></p>
+                </div>
+                <div class="step-line flex-1 h-0.5 bg-slate-200"></div>
+                <div id="step-2" class="step-item flex-1 text-center">
+                     <div class="step-circle w-8 h-8 mx-auto rounded-full flex items-center justify-center font-bold border-2 border-transparent">3</div>
+                    <p id="step-2-label" class="mt-2 text-sm font-semibold text-slate-500"></p>
+                </div>
+            </div>
+        </div>
+
+        <section id="page-home" class="app-section">
+            <header class="text-center mb-12 page-header">
+                <h1 id="home-title" class="text-4xl sm:text-5xl font-bold text-[#004E64]"></h1>
+                <p id="home-subtitle" class="mt-4 text-lg text-slate-600 max-w-3xl mx-auto"></p>
+            </header>
+            <main>
+                <div id="criteria-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                </div>
+            </main>
+        </section>
+
+        <section id="page-evaluation" class="app-section hidden">
+             <header class="mb-8 flex justify-between items-center">
+                 <div>
+                    <button id="back-to-home" class="text-[#004E64] font-semibold hover:text-[#256EFF] transition-colors group flex items-center">
+                        <span class="transform transition-transform group-hover:-translate-x-1">←</span>
+                        <span id="back-to-overview-btn-text" class="ml-2"></span>
+                    </button>
+                    <h1 id="evaluation-title" class="text-3xl font-bold text-[#004E64] mt-2"></h1>
+                 </div>
+                 <div class="flex items-center gap-2">
+                    <button id="prev-criterion-btn" title="Critério Anterior" class="bg-slate-200 text-slate-700 font-bold p-2.5 rounded-lg hover:bg-slate-300 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                    </button>
+                    <button id="next-criterion-btn" title="Próximo Critério" class="bg-slate-200 text-slate-700 font-bold p-2.5 rounded-lg hover:bg-slate-300 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                    </button>
+                 </div>
+             </header>
+             <p id="evaluation-subtitle" class="mt-2 text-slate-600 mb-6"></p>
+             <div class="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm mb-6 sticky top-4 z-20 border border-slate-200">
+                 <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center space-x-3">
+                        <span id="weight-sum-label" class="font-semibold text-slate-700"></span>
+                        <span id="weight-sum" class="text-xl font-bold text-[#004E64]">0%</span>
+                    </div>
+                    <button id="complete-evaluation-btn" class="bg-[#004E64] text-white font-bold py-2.5 px-6 rounded-lg hover:bg-[#003a4d] transition-all duration-300 shadow-md hover:shadow-lg disabled:bg-slate-400 disabled:shadow-none disabled:cursor-not-allowed">
+                    </button>
+                 </div>
+             </div>
+             <form id="evaluation-form" class="space-y-8">
+             </form>
+             <div class="mt-10 text-center">
+                 <button id="view-results-btn" class="bg-[#A3B18A] text-white font-bold py-3 px-10 rounded-lg hover:bg-[#8f9d74] transition-colors text-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transform">
+                 </button>
+             </div>
+        </section>
+
+        <section id="page-results" class="app-section hidden">
+            <header class="text-center mb-12 page-header">
+                <h1 id="results-title" class="text-4xl sm:text-5xl font-bold text-[#004E64]"></h1>
+                <p id="results-subtitle" class="mt-4 text-lg text-slate-600 max-w-3xl mx-auto"></p>
+                 <div class="mt-8 flex justify-center space-x-4">
+                    <button id="back-to-home-from-results" class="bg-white border border-slate-300 text-slate-700 font-semibold py-2 px-6 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition-colors"></button>
+                    <button id="export-pdf-btn" class="bg-[#004E64] text-white font-bold py-2 px-6 rounded-lg hover:bg-[#003a4d] transition-colors shadow-md hover:shadow-lg"></button>
+                 </div>
+            </header>
+
+            <div id="report-content" class="space-y-8">
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 id="ai-analysis-title" class="text-xl font-bold text-[#004E64]"></h2>
+                        <button id="generate-ai-report-btn" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105">
+                        </button>
+                    </div>
+                    <div id="ai-report-output" class="space-y-6">
+                        </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                    <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+                        <h2 id="radar-chart-title" class="text-xl font-bold text-center mb-4 text-[#004E64]"></h2>
+                        <div class="chart-container">
+                            <canvas id="radar-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+                        <h2 id="bar-chart-title" class="text-xl font-bold text-center mb-4 text-[#004E64]"></h2>
+                        <select id="bar-chart-filter" class="w-full p-2 border border-slate-300 rounded-md mb-4 bg-slate-50 focus:ring-2 focus:ring-[#256EFF] focus:border-[#256EFF]"></select>
+                        <div class="chart-container h-[45vh] max-h-[400px]">
+                             <canvas id="bar-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+                    <h2 id="table-title" class="text-xl font-bold mb-4 text-[#004E64]"></h2>
+                    <input type="text" id="search-table" class="w-full p-2 border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-[#256EFF] focus:border-[#256EFF]">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead id="results-table-head" class="bg-slate-50">
+                            </thead>
+                            <tbody id="results-table-body" class="bg-white divide-y divide-slate-200">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="page-about" class="app-section hidden p-8 bg-white rounded-xl shadow-lg">
+            <h1 class="text-3xl font-bold text-[#004E64] mb-6">Sobre o Framework e a Idealizadora</h1>
+            <div class="flex flex-col md:flex-row items-center md:items-start gap-8">
+                <div class="flex-shrink-0">
+                    <img id="idealizadora-img" src="https://via.placeholder.com/200" alt="Foto da Idealizadora" class="rounded-full w-48 h-48 object-cover shadow-md border-4 border-[#A3B18A]">
+                    <p class="text-center text-lg font-semibold text-slate-700 mt-2">Luana Oliveira da Silva</p>
+                    <p class="text-center text-sm text-slate-500">Criadora do Framework</p>
+                </div>
+                <div class="flex-grow text-slate-700">
+                    <h2 class="text-2xl font-semibold text-[#004E64] mb-3">História da Criação</h2>
+                    <p class="mb-4">O cenário educacional brasileiro contemporâneo é marcado por desafios significativos, especialmente no que tange à qualidade e equidade do ensino. [cite: 16] Professores enfrentam sobrecarga de trabalho, acúmulo de funções e escassez de tempo, dificultando a realização de análises aprofundadas dessas ferramentas. [cite: 22] A ausência de frameworks interativos que integrem cálculos automatizados e critérios objetivos compromete a qualidade das avaliações e, consequentemente, a eficácia do processo de ensino-aprendizagem. [cite: 23]</p>
+                    <p class="mb-4">Nesse contexto, surgiu a oportunidade de desenvolver uma estrutura conceitual que facilitasse a avaliação sistemática dessas plataformas, considerando aspectos pedagógicos, técnicos e de usabilidade. [cite: 24] A proposta deste framework interativo, fundamentado em normas reconhecidas como a ISO 25010, nas heurísticas de Nielsen e outras métricas, visa preencher essa lacuna, oferecendo aos docentes uma ferramenta eficiente e alinhada às suas necessidades, contribuindo para a melhoria contínua da qualidade educacional. [cite: 25]</p>
+                    <p>Este projeto apresenta a criação de um framework para a análise de plataformas educacionais, organizando indicadores pedagógicos, de usabilidade e técnicos, fundamentados em conhecimentos científicos interdisciplinares. [cite: 5] O objetivo é que o framework ofereça subsídios para uma avaliação aprofundada das plataformas, contribuindo com melhorias tanto sob o ponto de vista técnico quanto pedagógico. [cite: 14]</p>
+                    </div>
+            </div>
+        </section>
+
+        <section id="page-support" class="app-section hidden p-8 bg-white rounded-xl shadow-lg">
+            <h1 class="text-3xl font-bold text-[#004E64] mb-6">Instruções e Suporte Contextual</h1>
+            <p class="mb-6 text-slate-700">Aqui você encontrará recursos para te ajudar a utilizar o framework de forma eficaz. Assista aos vídeos explicativos para entender cada funcionalidade e tirar o máximo proveito da ferramenta.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="video-container bg-slate-100 p-4 rounded-lg shadow-sm">
+                    <h2 class="text-xl font-semibold text-[#004E64] mb-3">Como Usar o Framework - Parte 1</h2>
+                    <iframe src="https://example.com/seu-link-do-drive-video1-embed" class="w-full aspect-video rounded-md" allowfullscreen></iframe>
+                    <p class="mt-3 text-slate-600">Este vídeo demonstra os primeiros passos para navegar no framework e iniciar sua primeira avaliação de plataforma.</p>
+                </div>
+                <div class="video-container bg-slate-100 p-4 rounded-lg shadow-sm">
+                    <h2 class="text-xl font-semibold text-[#004E64] mb-3">Análise de Resultados e Relatórios - Parte 2</h2>
+                    <iframe src="https://example.com/seu-link-do-drive-video2-embed" class="w-full aspect-video rounded-md" allowfullscreen></iframe>
+                    <p class="mt-3 text-slate-600">Aprenda a interpretar os gráficos de resultados, exportar relatórios em PDF e utilizar a análise assistida por IA.</p>
+                </div>
+            </div>
+            <div class="mt-8">
+                <h2 class="text-2xl font-semibold text-[#004E64] mb-3">Suporte Adicional</h2>
+                <p class="text-slate-700">Se tiver dúvidas que não foram cobertas nos vídeos, utilize o chatbot no canto inferior direito da tela. Ele pode responder a perguntas sobre as teorias pedagógicas, usabilidade e o funcionamento da IA.</p>
+            </div>
+        </section>
+    </div>
+
+    <div id="alert-modal-container" class="alert-modal-container fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full text-center transform transition-all">
+            <div id="alert-icon" class="mx-auto flex items-center justify-center h-16 w-16 rounded-full mb-5">
+            </div>
+            <h3 id="alert-title" class="text-xl font-bold text-slate-800"></h3>
+            <p id="alert-message" class="text-slate-600 mt-2"></p>
+            <button id="alert-close-btn" class="mt-6 w-full bg-[#004E64] text-white py-2.5 rounded-lg hover:bg-[#003a4d] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#004E64]"></button>
+        </div>
+    </div>
+
+    <div id="accessibility-modal-container" class="accessibility-modal-container fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full transform transition-all">
+            <h3 class="text-2xl font-bold text-[#004E64] mb-6">Recursos de Acessibilidade</h3>
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-lg font-semibold text-slate-700 mb-2">Tamanho da Fonte:</label>
+                    <div class="flex space-x-3">
+                        <button id="font-size-sm" class="px-4 py-2 bg-slate-200 rounded-md hover:bg-slate-300 transition-colors text-sm">Pequena</button>
+                        <button id="font-size-md" class="px-4 py-2 bg-slate-200 rounded-md hover:bg-slate-300 transition-colors text-base">Média</button>
+                        <button id="font-size-lg" class="px-4 py-2 bg-slate-200 rounded-md hover:bg-slate-300 transition-colors text-lg">Grande</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-lg font-semibold text-slate-700 mb-2">Contraste de Cores:</label>
+                    <div class="flex space-x-3">
+                        <button id="contrast-normal" class="px-4 py-2 bg-slate-200 rounded-md hover:bg-slate-300 transition-colors">Normal</button>
+                        <button id="contrast-high" class="px-4 py-2 bg-slate-800 text-white rounded-md hover:bg-black transition-colors">Alto Contraste</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-lg font-semibold text-slate-700 mb-2">Janela de Libras:</label>
+                    <button id="toggle-libras-window" class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors">Ativar/Desativar Libras</button>
+                    <div id="libras-window-placeholder" class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md text-blue-800 hidden">
+                        <p>Janela de Libras será exibida aqui (requer integração de um widget externo ou API).</p>
+                    </div>
+                </div>
+            </div>
+            <button id="accessibility-close-btn" class="mt-8 w-full bg-[#004E64] text-white py-2.5 rounded-lg hover:bg-[#003a4d] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#004E64]">Fechar</button>
+        </div>
+    </div>
+
+    <div id="chatbot-toggle-btn" class="fixed bottom-6 right-6 bg-[#256EFF] text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl cursor-pointer hover:bg-blue-700 transition-all duration-300 transform hover:scale-110 z-40">
+        <svg id="chatbot-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 transition-opacity duration-300" viewBox="0 0 24 24" fill="currentColor">
+            <path fill-rule="evenodd" d="M4.804 21.644A6.707 6.707 0 006 21.75a6.721 6.721 0 003.583-1.029c.774.182 1.584.279 2.417.279 5.252 0 9.75-3.616 9.75-8.25s-4.498-8.25-9.75-8.25S3 6.616 3 11.25c0 1.801.523 3.514 1.416 4.904.34.51.323 1.15-.043 1.636l-1.42 2.13a.75.75 0 00.902 1.055l2.162-.919zM12 7.875a.75.75 0 01.75.75v.008a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5zm-.75 2.25a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" clip-rule="evenodd" />
+        </svg>
+        <svg id="chatbot-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 absolute opacity-0 transition-opacity duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+    </div>
+    <div id="chatbot-container" class="chatbot-container fixed bottom-24 right-6 w-full max-w-sm h-[70vh] max-h-[550px] bg-white rounded-2xl shadow-2xl flex flex-col hidden z-40 border border-slate-200">
+        <header class="bg-slate-50 p-4 flex justify-between items-center rounded-t-2xl border-b border-slate-200">
+            <div>
+                <h3 id="chatbot-title" class="font-bold text-[#004E64]"></h3>
+                <p class="text-xs text-slate-500 flex items-center"><span class="h-2 w-2 bg-green-400 rounded-full mr-1.5"></span><span id="chatbot-status">Online</span></p>
+            </div>
+            <button id="chatbot-close-btn" class="text-slate-400 hover:text-slate-700 transition-colors text-2xl leading-none">&times;</button>
+        </header>
+        <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-[#F5EEDC]/50 space-y-4">
+        </div>
+        <div id="typing-indicator" class="p-4 hidden">
+             <div class="chat-message typing-indicator bg-slate-200 rounded-2xl px-4 py-3 max-w-min">
+                <span class="w-2 h-2 bg-slate-500 rounded-full inline-block"></span>
+                <span class="w-2 h-2 bg-slate-500 rounded-full inline-block"></span>
+                <span class="w-2 h-2 bg-slate-500 rounded-full inline-block"></span>
+            </div>
+        </div>
+        <form id="chat-form" class="p-3 border-t border-slate-200 bg-white rounded-b-2xl">
+            <div class="flex items-center space-x-2">
+                <input type="text" id="chat-input" class="flex-1 p-2.5 bg-slate-100 border border-transparent rounded-lg focus:outline-none focus:ring-2 focus:ring-[#256EFF] focus:bg-white" autocomplete="off">
+                <button type="submit" id="chat-submit-btn" class="bg-[#256EFF] text-white w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg hover:bg-blue-700 transition-colors shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.428A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+    const App = {
+        data: {},
+        elements: {
+            pages: {},
+            chatbot: {}
+        },
+        state: {
+            currentCriterionId: null,
+            currentLanguage: 'pt',
+            proactiveTipTimeout: null,
+            onboardingCompleted: false, // Novo estado para controlar o onboarding
+            currentOnboardingStep: 0,
+        },
+        
+        init() {
+            this.loadLanguageData();
+            this.cacheDOMElements();
+            this.setLanguage(this.state.currentLanguage);
+            this.bindEvents();
+            this.showPage('page-home');
+
+            // Verifica se o onboarding já foi concluído
+            if (localStorage.getItem('onboardingCompleted') !== 'true') {
+                this.startOnboardingTour();
+            } else {
+                this.state.onboardingCompleted = true;
+            }
+        },
+
+        loadLanguageData() {
+            this.data = {
+                pt: {
+                    platformName: "Nova Plataforma Exemplo",
+                    stepper: ["Visão Geral", "Avaliação", "Resultados"],
+                    nav: { home: "Home", about: "Sobre", support: "Suporte", accessibility: "Acessibilidade" }, // Novo
+                    home: { title: "Framework Avaliativo Profissional", subtitle: "Uma ferramenta robusta para análise aprofundada de plataformas educacionais, baseada em critérios pedagógicos e de usabilidade. Comece selecionando um critério para avaliar." },
+                    evaluation: { back: "Voltar para Visão Geral", subtitle: "Para cada subcritério, atribua uma nota, um peso percentual e as evidências coletadas. A soma dos pesos deve totalizar 100% para uma análise precisa.", weightSum: "Soma dos Pesos:", completeBtn: "Concluir Análise do Critério", resultsBtn: "Visualizar Dashboard de Resultados", score: "Nota", weight: "Peso (%)", evidence: "Evidências", observations: "Observações (Opcional)", analyzeBtn: "Analisar com IA", aiSuggestion: "Sugestão da IA:", acceptBtn: "Aceitar" },
+                    results: { title: "Dashboard de Resultados", subtitle: "Sua análise compilada em visualizações de dados interativas. Explore os insights e exporte seu relatório final.", newEvalBtn: "Iniciar Nova Avaliação", exportBtn: "Exportar Relatório PDF", radarTitle: "Síntese de Desempenho por Critério", barTitle: "Análise Detalhada por Subcritério", tableTitle: "Tabela de Evidências Completa", searchPlaceholder: "Filtrar por palavras-chave...", tableHead: ["Critério", "Subcritério", "Nota", "Peso", "Evidências", "Observações"], aiAnalysisTitle: "Análise Assistida por IA", generateAIBtn: "Gerar Análise Qualitativa", qualitativeSummary: "Resumo Qualitativo", maturityLevel: "Nível de Maturidade", maturityLevels: { inicial: "Inicial", desenvolvimento: "Em Desenvolvimento", avancada: "Avançada", referencia: "Referência" } },
+                    alerts: { success: "Sucesso!", error: "Erro de Validação", attention: "Atenção", processing: "Processando...", closeBtn: "Entendido", invalidWeight: "A soma dos pesos deve ser exatamente 100%.", criteriaCompleted: (name, avg) => `O critério "${name}" foi salvo com média de ${avg}.`, noResults: "Conclua a avaliação de pelo menos um critério para ver os resultados.", pdfGenerating: "Gerando seu relatório em PDF. Por favor, aguarde.", pdfError: "Ocorreu um problema ao gerar o PDF." },
+                    chatbot: { title: "Assistente de Avaliação", status: "Online", inputPlaceholder: "Faça uma pergunta...", initialMessage: "Olá! Sou o assistente de avaliação. Como posso te ajudar? Você pode me perguntar sobre 'como usar', 'o que é a teoria de Sweller', ou 'como funciona a IA'.", defaultResponse: "Desculpe, não entendi. Tente perguntar sobre 'como usar', 'critérios' ou uma teoria específica como 'Bloom' ou 'Nielsen'.", thankYou: "De nada! Fico à disposição se precisar de mais alguma coisa." },
+                    criteria: [
+                        { id: "cognitividade", name: "Cognitividade e Neuroaprendizagem", icon: '🧠', desc: "Equilíbrio entre complexidade e carga cognitiva, favorecendo microlearning.", subCriteria: [{id: "dist_cognitiva", name: "Distribuição cognitiva"}, {id: "var_sensorial", name: "Variedade sensorial"}, {id: "red_sobrecarga", name: "Redução de sobrecarga"}]},
+                        { id: "usabilidade_ux", name: "Usabilidade e UX", icon: '🖱️', desc: "Navegação intuitiva e consistência visual em todos os dispositivos.", subCriteria: [{id: "nav_intuitiva", name: "Navegação intuitiva"}, {id: "cons_visual", name: "Consistência visual"}, {id: "tempo_resposta", name: "Performance e fluidez"}]},
+                        { id: "qualidade_pedagogica", name: "Qualidade Pedagógica", icon: '📚', desc: "Clareza dos objetivos de aprendizagem e alinhamento com as atividades.", subCriteria: [{id: "clareza_obj", name: "Clareza dos objetivos"}, {id: "seq_logica", name: "Sequenciamento lógico"}, {id: "alin_atividades", name: "Alinhamento atividades-objetivos"}]},
+                        { id: "acessibilidade", name: "Acessibilidade e Inclusão", icon: '♿', desc: "Compatibilidade com leitores de tela e diretrizes WCAG 2.1.", subCriteria: [{id: "comp_leitores", name: "Compatibilidade com leitores de tela"}, {id: "design_acessivel", name: "Design acessível"}, {id: "ling_acessivel", name: "Linguagem acessível"}]},
+                        { id: "motivacao", name: "Motivação e Engajamento", icon: '🏆', desc: "Uso de gamificação, personalização e reconhecimento de conquistas.", subCriteria: [{id: "pers_aprendizagem", name: "Personalização"}, {id: "elem_gamificacao", name: "Gamificação"}, {id: "autonomia_aluno", name: "Autonomia do aluno"}, {id: "rec_conquistas", name: "Reconhecimento de conquistas"}]},
+                        { id: "avaliacao_feedback", name: "Avaliação e Feedback", icon: '📊', desc: "Avaliações formativas e feedbacks construtivos em tempo real.", subCriteria: [{id: "aval_formativas", name: "Avaliações formativas"}, {id: "retorno_qualitativo", name: "Feedback construtivo"}, {id: "feed_adaptativo", name: "Feedback adaptativo"}, {id: "acomp_real", name: "Acompanhamento em tempo real"}]},
+                        { id: "interatividade_dados", name: "Interatividade e Dados", icon: '💬', desc: "Qualidade da interação homem-máquina e uso de assistentes virtuais.", subCriteria: [{id: "inter_plataforma", name: "Fluidez da interação"}]}
+                    ],
+                    knowledgeBase: {
+                        "como usar": "1. Clique em um critério na tela inicial. 2. Preencha as notas e pesos (total 100%). 3. Clique em 'Concluir Análise'. 4. Após avaliar, clique em 'Visualizar Dashboard'.",
+                        "como funciona a ia": "A IA analisa textos em busca de palavras-chave positivas e negativas para sugerir uma nota. No relatório final, ela identifica os pontos mais fortes e fracos para gerar um resumo e classificar a maturidade da plataforma.",
+                        "sweller": "A Teoria da Carga Cognitiva de John Sweller sugere que o design instrucional deve minimizar a carga estranha (informação irrelevante) e otimizar a carga intrínseca (dificuldade do conteúdo) para facilitar a aprendizagem.",
+                        "paivio": "A Teoria da Codificação Dupla de Allan Paivio postula que a cognição humana processa informações por dois canais: verbal e visual. Apresentar informações em ambos os formatos (ex: texto e imagem) fortalece a aprendizagem.",
+                        "nielsen": "As 10 Heurísticas de Usabilidade de Jakob Nielsen são princípios gerais para o design de interfaces. Incluem 'Visibilidade do status do sistema', 'Consistência e padrões' e 'Design minimalista'.",
+                        "bloom": "A Taxonomia de Bloom classifica os objetivos educacionais em níveis de complexidade e especificidade, do mais simples (Lembrar) ao mais complexo (Criar). Ajuda a estruturar atividades de aprendizagem.",
+                        "acessibilidade": "Boas práticas de acessibilidade incluem garantir alto contraste de cores, fornecer texto alternativo para imagens, usar legendas em vídeos e garantir que a navegação seja possível apenas com o teclado.",
+                        "ux": "Para preencher as evidências de UX (Experiência do Usuário), observe: A navegação é fácil de entender? Os botões e menus são consistentes? A plataforma é rápida e não trava?",
+                        "carga cognitiva": "Carga cognitiva refere-se ao esforço mental total usado na memória de trabalho. Um bom design educacional visa reduzir a carga desnecessária para que o aluno possa se concentrar no aprendizado.",
+                        "obrigado": "De nada! Fico à disposição se precisar de mais alguma coisa."
+                    },
+                    proactiveTips: {
+                        "acessibilidade": "Dica: Lembre-se de verificar o contraste das cores usando uma ferramenta online e se todas as imagens importantes possuem texto alternativo descritivo.",
+                        "usabilidade_ux": "Dica: Tente navegar pela plataforma como se fosse um novo usuário. Anote quaisquer pontos de confusão ou hesitação. Isso é uma ótima evidência para 'Navegação intuitiva'.",
+                        "cognitividade": "Dica: Observe se a plataforma divide conteúdos complexos em partes menores (microlearning). Isso ajuda a gerenciar a carga cognitiva do aluno.",
+                    },
+                    onboarding: { // Novo
+                        welcome: "Bem-vindo(a) ao Framework Avaliativo! Vamos fazer um tour rápido para você conhecer as funcionalidades.",
+                        step1_title: "Navegação Principal",
+                        step1_text: "Use este menu para alternar entre as seções do framework: Home, Sobre e Suporte. Acessibilidade também está aqui!",
+                        step2_title: "Selecione um Critério",
+                        step2_text: "Na Home, clique em um dos cartões para começar a avaliar um critério específico da plataforma.",
+                        step3_title: "Página de Avaliação",
+                        step3_text: "Aqui você insere notas, pesos e evidências para cada subcritério. Use o botão 'Analisar com IA' para obter sugestões!",
+                        step4_title: "Dashboard de Resultados",
+                        step4_text: "Após concluir as avaliações, veja os resultados em gráficos interativos e gere relatórios com a análise da IA.",
+                        finish_title: "Pronto para Começar?",
+                        finish_text: "Agora você tem uma visão geral! Explore o framework e melhore suas avaliações de plataformas educacionais!",
+                        next_btn: "Próximo",
+                        skip_btn: "Pular Tour",
+                        end_btn: "Começar"
+                    }
+                },
+                en: {
+                    platformName: "New Example Platform",
+                    stepper: ["Overview", "Evaluation", "Results"],
+                    nav: { home: "Home", about: "About", support: "Support", accessibility: "Accessibility" }, // Novo
+                    home: { title: "Professional Evaluation Framework", subtitle: "A robust tool for in-depth analysis of educational platforms, based on pedagogical and usability criteria. Start by selecting a criterion to evaluate." },
+                    evaluation: { back: "Back to Overview", subtitle: "For each sub-criterion, assign a score, a percentage weight, and the collected evidence. The sum of weights must total 100% for an accurate analysis.", weightSum: "Sum of Weights:", completeBtn: "Complete Criterion Analysis", resultsBtn: "View Results Dashboard", score: "Score", weight: "Weight (%)", evidence: "Evidence", observations: "Observations (Optional)", analyzeBtn: "Analyze with AI", aiSuggestion: "AI Suggestion:", acceptBtn: "Accept" },
+                    results: { title: "Results Dashboard", subtitle: "Your analysis compiled into interactive data visualizations. Explore the insights and export your final report.", newEvalBtn: "Start New Evaluation", exportBtn: "Export PDF Report", radarTitle: "Performance Synthesis by Criterion", barTitle: "Detailed Analysis by Sub-criterion", tableTitle: "Complete Evidence Table", searchPlaceholder: "Filter by keywords...", tableHead: ["Criterion", "Sub-criterion", "Score", "Weight", "Evidence", "Observations"], aiAnalysisTitle: "AI-Assisted Analysis", generateAIBtn: "Generate Qualitative Analysis", qualitativeSummary: "Qualitative Summary", maturityLevel: "Maturity Level", maturityLevels: { inicial: "Initial", desenvolvimento: "In Development", avancada: "Advanced", referencia: "Reference"} },
+                    alerts: { success: "Success!", error: "Validation Error", attention: "Attention", processing: "Processing...", closeBtn: "Understood", invalidWeight: "The sum of the weights must be exactly 100%.", criteriaCompleted: (name, avg) => `The criterion "${name}" was saved with an average score of ${avg}.`, noResults: "Complete the evaluation of at least one criterion to see the results.", pdfGenerating: "Generating your PDF report. Please wait.", pdfError: "An error occurred while generating the PDF." },
+                    chatbot: { title: "Evaluation Assistant", status: "Online", inputPlaceholder: "Ask a question...", initialMessage: "Hello! I'm the evaluation assistant. How can I help you? You can ask me about 'how to use', 'what is Sweller's theory', or 'how the AI works'.", defaultResponse: "Sorry, I didn't understand. You can try asking about 'how to use', 'criteria', or a specific theory like 'Bloom' or 'Nielsen'.", thankYou: "You're welcome! I'm here if you need anything else." },
+                    criteria: [
+                        { id: "cognitividade", name: "Cognition and Neurolearning", icon: '🧠', desc: "Balance between complexity and cognitive load, favoring microlearning.", subCriteria: [{id: "dist_cognitiva", name: "Cognitive distribution"}, {id: "var_sensorial", name: "Sensory variety"}, {id: "red_sobrecarga", name: "Cognitive overload reduction"}]},
+                        { id: "usabilidade_ux", name: "Usability and UX", icon: '🖱️', desc: "Intuitive navigation and visual consistency across all devices.", subCriteria: [{id: "nav_intuitiva", name: "Intuitive navigation"}, {id: "cons_visual", name: "Visual consistency"}, {id: "tempo_resposta", name: "Performance and fluidity"}]},
+                        { id: "qualidade_pedagogica", name: "Pedagogical Quality", icon: '📚', desc: "Clarity of learning objectives and alignment with activities.", subCriteria: [{id: "clareza_obj", name: "Clarity of objectives"}, {id: "seq_logica", name: "Logical sequencing"}, {id: "alin_atividades", name: "Activity-objective alignment"}]},
+                        { id: "acessibilidade", name: "Accessibility and Inclusion", icon: '♿', desc: "Compatibility with screen readers and WCAG 2.1 guidelines.", subCriteria: [{id: "comp_leitores", name: "Screen reader compatibility"}, {id: "design_acessivel", name: "Accessible design"}, {id: "ling_acessivel", name: "Accessible language"}]},
+                        { id: "motivacao", name: "Motivation and Engagement", icon: '🏆', desc: "Use of gamification, personalization, and recognition of achievements.", subCriteria: [{id: "pers_aprendizagem", name: "Personalization"}, {id: "elem_gamificacao", name: "Gamification"}, {id: "autonomia_aluno", name: "Student autonomy"}, {id: "rec_conquistas", name: "Achievement recognition"}]},
+                        { id: "avaliacao_feedback", name: "Evaluation and Feedback", icon: '📊', desc: "Formative assessments and constructive real-time feedback.", subCriteria: [{id: "aval_formativas", name: "Formative assessments"}, {id: "retorno_qualitativo", name: "Constructive feedback"}, {id: "feed_adaptativo", name: "Adaptive feedback"}, {id: "acomp_real", name: "Real-time tracking"}]},
+                        { id: "interatividade_dados", name: "Interactivity and Data", icon: '💬', desc: "Quality of human-computer interaction and use of virtual assistants.", subCriteria: [{id: "inter_plataforma", name: "Interaction fluidity"}]}
+                    ],
+                    knowledgeBase: {
+                        "how to use": "1. Click a criterion on the home screen. 2. Fill in scores and weights (totaling 100%). 3. Click 'Complete Analysis'. 4. After evaluating, click 'View Dashboard' to see the results.",
+                        "how does the ai work": "The AI analyzes text for positive and negative keywords to suggest a score. In the final report, it identifies the strongest and weakest points to generate a summary and classify the platform's maturity.",
+                        "sweller": "John Sweller's Cognitive Load Theory suggests that instructional design should minimize extraneous load (irrelevant information) and optimize intrinsic load (content difficulty) to facilitate learning.",
+                        "paivio": "Allan Paivio's Dual-Coding Theory posits that human cognition processes information through two channels: verbal and visual. Presenting information in both formats (e.g., text and image) enhances learning.",
+                        "nielsen": "Jakob Nielsen's 10 Usability Heuristics are general principles for interface design. They include 'Visibility of system status,' 'Consistency and standards,' and 'Minimalist design.'",
+                        "bloom": "Bloom's Taxonomy classifies educational objectives into levels of complexity and specificity, from the simplest (Remember) to the most complex (Create). It helps structure learning activities.",
+                        "accessibility": "Accessibility best practices include ensuring high color contrast, providing alternative text for images, using captions in videos, and making sure navigation is possible with the keyboard alone.",
+                        "ux": "To fill in UX (User Experience) evidence, observe: Is navigation easy to understand? Are buttons and menus consistent? Is the platform fast and does not crash?",
+                        "cognitive load": "Cognitive load refers to the total mental effort used in working memory. Good educational design aims to reduce unnecessary load so the learner can focus on learning.",
+                        "thank you": "You're welcome! I'm here if you need anything else."
+                    },
+                    proactiveTips: {
+                        "acessibilidade": "Tip: Remember to check color contrast using an online tool and ensure all important images have descriptive alternative text.",
+                        "usabilidade_ux": "Tip: Try navigating the platform as if you were a new user. Note any points of confusion or hesitation. This is great evidence for 'Intuitive navigation'.",
+                        "cognitividade": "Tip: Notice if the platform breaks down complex content into smaller parts (microlearning). This helps manage the learner's cognitive load.",
+                    },
+                    onboarding: { // Novo
+                        welcome: "Welcome to the Evaluation Framework! Let's take a quick tour to show you its features.",
+                        step1_title: "Main Navigation",
+                        step1_text: "Use this menu to switch between framework sections: Home, About, and Support. Accessibility is also here!",
+                        step2_title: "Select a Criterion",
+                        step2_text: "On the Home page, click one of the cards to start evaluating a specific platform criterion.",
+                        step3_title: "Evaluation Page",
+                        step3_text: "Here you enter scores, weights, and evidence for each sub-criterion. Use the 'Analyze with AI' button for suggestions!",
+                        step4_title: "Results Dashboard",
+                        step4_text: "After completing evaluations, view results in interactive charts and generate reports with AI analysis.",
+                        finish_title: "Ready to Start?",
+                        finish_text: "Now you have an overview! Explore the framework and improve your educational platform evaluations!",
+                        next_btn: "Next",
+                        skip_btn: "Skip Tour",
+                        end_btn: "Start"
+                    }
+                }
+            };
+            this.data.evaluation = this.data.pt.criteria.map(c => ({
+                id: c.id,
+                weightedAverage: 0,
+                completed: false,
+                subCriteria: c.subCriteria.map(sc => ({
+                    id: sc.id,
+                    score: 0, weight: 0, evidence: "", observations: ""
+                }))
+            }));
+        },
+
+        cacheDOMElements() {
+            this.elements = {
+                pages: {
+                    'page-home': document.getElementById('page-home'),
+                    'page-evaluation': document.getElementById('page-evaluation'),
+                    'page-results': document.getElementById('page-results'),
+                    'page-about': document.getElementById('page-about'),      // Novo
+                    'page-support': document.getElementById('page-support'),  // Novo
+                },
+                stepper: document.getElementById('stepper'),
+                criteriaGrid: document.getElementById('criteria-grid'),
+                evaluationForm: document.getElementById('evaluation-form'),
+                resultsTableHead: document.getElementById('results-table-head'),
+                resultsTableBody: document.getElementById('results-table-body'),
+                backToHome: document.getElementById('back-to-home'),
+                backToHomeFromResults: document.getElementById('back-to-home-from-results'),
+                completeEvaluationBtn: document.getElementById('complete-evaluation-btn'),
+                viewResultsBtn: document.getElementById('view-results-btn'),
+                exportPdfBtn: document.getElementById('export-pdf-btn'),
+                alertCloseBtn: document.getElementById('alert-close-btn'),
+                prevCriterionBtn: document.getElementById('prev-criterion-btn'),
+                nextCriterionBtn: document.getElementById('next-criterion-btn'),
+                radarChart: document.getElementById('radar-chart'),
+                barChart: document.getElementById('bar-chart'),
+                barChartFilter: document.getElementById('bar-chart-filter'),
+                searchTable: document.getElementById('search-table'),
+                alertModalContainer: document.getElementById('alert-modal-container'),
+                alertTitle: document.getElementById('alert-title'),
+                alertMessage: document.getElementById('alert-message'),
+                alertIcon: document.getElementById('alert-icon'),
+                aiAnalysisTitle: document.getElementById('ai-analysis-title'),
+                generateAiReportBtn: document.getElementById('generate-ai-report-btn'),
+                aiReportOutput: document.getElementById('ai-report-output'),
+                chatbot: {
+                    toggleBtn: document.getElementById('chatbot-toggle-btn'),
+                    container: document.getElementById('chatbot-container'),
+                    closeBtn: document.getElementById('chatbot-close-btn'),
+                    messages: document.getElementById('chat-messages'),
+                    form: document.getElementById('chat-form'),
+                    input: document.getElementById('chat-input'),
+                    typingIndicator: document.getElementById('typing-indicator'),
+                    iconOpen: document.getElementById('chatbot-icon-open'),
+                    iconClose: document.getElementById('chatbot-icon-close'),
+                    title: document.getElementById('chatbot-title'),
+                    status: document.getElementById('chatbot-status'),
+                    submitBtn: document.getElementById('chat-submit-btn')
+                },
+                languageSwitcher: document.getElementById('language-switcher'),
+                homeTitle: document.getElementById('home-title'),
+                homeSubtitle: document.getElementById('home-subtitle'),
+                backToOverviewBtnText: document.getElementById('back-to-overview-btn-text'),
+                evaluationTitle: document.getElementById('evaluation-title'),
+                evaluationSubtitle: document.getElementById('evaluation-subtitle'),
+                weightSumLabel: document.getElementById('weight-sum-label'),
+                weightSum: document.getElementById('weight-sum'),
+                resultsTitle: document.getElementById('results-title'),
+                resultsSubtitle: document.getElementById('results-subtitle'),
+                radarChartTitle: document.getElementById('radar-chart-title'),
+                barChartTitle: document.getElementById('bar-chart-title'),
+                tableTitle: document.getElementById('table-title'),
+                
+                // Novos elementos de navegação
+                navHome: document.getElementById('nav-home'),
+                navAbout: document.getElementById('nav-about'),
+                navSupport: document.getElementById('nav-support'),
+                accessibilityBtn: document.getElementById('accessibility-btn'), // Botão de acessibilidade
+                accessibilityModalContainer: document.getElementById('accessibility-modal-container'), // Modal de acessibilidade
+                accessibilityCloseBtn: document.getElementById('accessibility-close-btn'),
+                fontSizeSmBtn: document.getElementById('font-size-sm'),
+                fontSizeMdBtn: document.getElementById('font-size-md'),
+                fontSizeLgBtn: document.getElementById('font-size-lg'),
+                contrastNormalBtn: document.getElementById('contrast-normal'),
+                contrastHighBtn: document.getElementById('contrast-high'),
+                toggleLibrasWindowBtn: document.getElementById('toggle-libras-window'),
+                librasWindowPlaceholder: document.getElementById('libras-window-placeholder'),
+            };
+        },
+
+        setLanguage(lang) {
+            if (!this.data[lang]) return;
+            this.state.currentLanguage = lang;
+            document.documentElement.lang = lang;
+            
+            this.elements.languageSwitcher.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('bg-[#004E64]', btn.dataset.lang === lang);
+                btn.classList.toggle('text-white', btn.dataset.lang === lang);
+                btn.classList.toggle('text-slate-500', btn.dataset.lang !== lang);
+                btn.classList.toggle('hover:bg-slate-200', btn.dataset.lang !== lang);
+            });
+            
+            const t = this.data[lang];
+            
+            t.stepper.forEach((label, index) => {
+                document.getElementById(`step-${index}-label`).textContent = label;
+            });
+
+            // Atualiza textos do menu de navegação
+            this.elements.navHome.textContent = t.nav.home;
+            this.elements.navAbout.textContent = t.nav.about;
+            this.elements.navSupport.textContent = t.nav.support;
+            this.elements.accessibilityBtn.querySelector('span').textContent = t.nav.accessibility;
+            
+            this.elements.homeTitle.textContent = t.home.title;
+            this.elements.homeSubtitle.textContent = t.home.subtitle;
+            this.elements.backToOverviewBtnText.textContent = t.evaluation.back;
+            this.elements.evaluationSubtitle.textContent = t.evaluation.subtitle;
+            this.elements.weightSumLabel.textContent = t.evaluation.weightSum;
+            this.elements.weightSum.textContent = this.elements.weightSum.textContent; // Mantém o valor, só atualiza o label
+            this.elements.completeEvaluationBtn.textContent = t.evaluation.completeBtn;
+            this.elements.viewResultsBtn.textContent = t.evaluation.resultsBtn;
+            this.elements.resultsTitle.textContent = t.results.title;
+            this.elements.resultsSubtitle.textContent = t.results.subtitle;
+            this.elements.backToHomeFromResults.textContent = t.results.newEvalBtn;
+            this.elements.exportPdfBtn.textContent = t.results.exportBtn;
+            this.elements.aiAnalysisTitle.textContent = t.results.aiAnalysisTitle;
+            this.elements.generateAiReportBtn.textContent = t.results.generateAIBtn;
+            this.elements.radarChartTitle.textContent = t.results.radarTitle;
+            this.elements.barChartTitle.textContent = t.results.barTitle;
+            this.elements.tableTitle.textContent = t.results.tableTitle;
+            this.elements.searchTable.placeholder = t.results.searchPlaceholder;
+            this.elements.alertCloseBtn.textContent = t.alerts.closeBtn;
+            this.elements.chatbot.title.textContent = t.chatbot.title;
+            this.elements.chatbot.status.textContent = t.chatbot.status;
+            this.elements.chatbot.input.placeholder = t.chatbot.inputPlaceholder;
+
+            // Reinicia a renderização para refletir as mudanças de idioma
+            this.renderHomePage();
+            if (this.state.currentCriterionId) {
+                this.showEvaluationPage(this.state.currentCriterionId, true);
+            }
+            if (this.elements.pages['page-results'] && !this.elements.pages['page-results'].classList.contains('hidden')) {
+                this.renderResults();
+            }
+            
+            this.elements.chatbot.messages.innerHTML = '';
+            this.addMessageToChat(t.chatbot.initialMessage, 'bot');
+        },
+        
+        bindEvents() {
+            // Eventos de navegação principal
+            this.elements.navHome.addEventListener('click', () => { this.showPage('page-home'); this.updateNavButtonState('nav-home'); });
+            this.elements.navAbout.addEventListener('click', () => { this.showPage('page-about'); this.updateNavButtonState('nav-about'); });
+            this.elements.navSupport.addEventListener('click', () => { this.showPage('page-support'); this.updateNavButtonState('nav-support'); });
+            this.elements.accessibilityBtn.addEventListener('click', () => this.toggleAccessibilityModal(true));
+            this.elements.accessibilityCloseBtn.addEventListener('click', () => this.toggleAccessibilityModal(false));
+
+            // Eventos dos recursos de acessibilidade
+            this.elements.fontSizeSmBtn.addEventListener('click', () => this.setFontSize('sm'));
+            this.elements.fontSizeMdBtn.addEventListener('click', () => this.setFontSize('md'));
+            this.elements.fontSizeLgBtn.addEventListener('click', () => this.setFontSize('lg'));
+            this.elements.contrastNormalBtn.addEventListener('click', () => this.setContrast('normal'));
+            this.elements.contrastHighBtn.addEventListener('click', () => this.setContrast('high'));
+            this.elements.toggleLibrasWindowBtn.addEventListener('click', () => this.toggleLibrasWindow());
+
+            // Eventos existentes
+            this.elements.backToHome.addEventListener('click', () => this.showPage('page-home'));
+            this.elements.backToHomeFromResults.addEventListener('click', () => { this.resetAllData(); this.showPage('page-home'); });
+            this.elements.completeEvaluationBtn.addEventListener('click', () => this.processEvaluation());
+            this.elements.viewResultsBtn.addEventListener('click', () => this.showResultsPage());
+            this.elements.exportPdfBtn.addEventListener('click', () => this.exportToPdf());
+            this.elements.alertCloseBtn.addEventListener('click', () => this.hideAlert());
+            this.elements.barChartFilter.addEventListener('change', (e) => this.updateBarChart(e.target.value));
+            this.elements.searchTable.addEventListener('input', (e) => this.filterTable(e.target.value));
+            this.elements.generateAiReportBtn.addEventListener('click', () => this.renderAIReport());
+            this.elements.prevCriterionBtn.addEventListener('click', () => this.handleCriterionNavigation(-1));
+            this.elements.nextCriterionBtn.addEventListener('click', () => this.handleCriterionNavigation(1));
+            this.elements.chatbot.toggleBtn.addEventListener('click', () => this.toggleChatbot());
+            this.elements.chatbot.closeBtn.addEventListener('click', () => this.toggleChatbot(false));
+            this.elements.chatbot.form.addEventListener('submit', (e) => this.handleChatMessage(e));
+            this.elements.languageSwitcher.addEventListener('click', (e) => {
+                if(e.target.matches('.lang-btn')) {
+                    this.setLanguage(e.target.dataset.lang);
+                }
+            });
+        },
+
+        updateNavButtonState(activeButtonId) {
+            const navButtons = document.querySelectorAll('.nav-btn');
+            navButtons.forEach(button => {
+                if (button.id === activeButtonId) {
+                    button.classList.add('bg-[#004E64]', 'text-white');
+                    button.classList.remove('text-slate-500', 'hover:bg-slate-200');
+                } else {
+                    button.classList.remove('bg-[#004E64]', 'text-white');
+                    button.classList.add('text-slate-500', 'hover:bg-slate-200');
+                }
+            });
+        },
+
+        showPage(pageId) {
+            clearTimeout(this.state.proactiveTipTimeout);
+            Object.values(this.elements.pages).forEach(page => {
+                if (page) page.classList.add('hidden');
+            });
+            const pageToShow = this.elements.pages[pageId];
+            if (pageToShow) {
+                pageToShow.classList.remove('hidden');
+
+                let stepIndex = 0;
+                if(pageId === 'page-evaluation') stepIndex = 1;
+                if(pageId === 'page-results') stepIndex = 2;
+                // O stepper só é relevante para as páginas de avaliação e resultados
+                if (pageId === 'page-home' || pageId === 'page-evaluation' || pageId === 'page-results') {
+                    this.elements.stepper.classList.remove('hidden');
+                    this.updateStepper(stepIndex);
+                } else {
+                    this.elements.stepper.classList.add('hidden');
+                }
+
+                this.updateNavButtonState(`nav-${pageId.replace('page-', '')}`);
+
+
+                if (pageId === 'page-evaluation') {
+                    const tip = this.data[this.state.currentLanguage].proactiveTips[this.state.currentCriterionId];
+                    if (tip) {
+                        this.state.proactiveTipTimeout = setTimeout(() => {
+                            this.addMessageToChat(tip, 'bot');
+                            this.toggleChatbot(true);
+                        }, 4000);
+                    }
+                }
+            }
+        },
+
+        renderHomePage() {
+            const grid = this.elements.criteriaGrid;
+            const t = this.data[this.state.currentLanguage];
+            grid.innerHTML = '';
+            t.criteria.forEach((criterion, index) => {
+                const evalData = this.data.evaluation[index];
+                const card = document.createElement('div');
+                card.className = `criteria-card p-6 bg-white rounded-xl shadow-lg border-2 ${evalData.completed ? 'border-green-400' : 'border-transparent'} cursor-pointer flex flex-col text-left`;
+                card.dataset.id = criterion.id;
+                
+                let completionMark = evalData.completed ? `<div class="absolute top-4 right-4 text-green-500 bg-green-100 rounded-full h-7 w-7 flex items-center justify-center" title="Concluído">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                </div>` : '';
+
+                card.innerHTML = `
+                    <div class="relative">
+                        ${completionMark}
+                        <span class="text-4xl">${criterion.icon}</span>
+                        <h3 class="mt-4 text-lg font-bold text-[#004E64]">${criterion.name}</h3>
+                        <p class="text-sm text-slate-500 mt-2 flex-grow">${criterion.desc}</p>
+                        <div class="text-sm font-semibold text-[#256EFF] mt-4">${t.home.title.includes("Framework") ? "Iniciar Avaliação" : "Start Evaluation"} →</div>
+                    </div>
+                `;
+                card.addEventListener('click', () => this.showEvaluationPage(criterion.id));
+                grid.appendChild(card);
+            });
+        },
+
+        showEvaluationPage(criterionId, isLanguageChange = false) {
+            this.state.currentCriterionId = criterionId;
+            const t = this.data[this.state.currentLanguage];
+            const criterionIndex = t.criteria.findIndex(c => c.id === criterionId);
+            const criterion = t.criteria[criterionIndex];
+            
+            this.elements.evaluationTitle.textContent = criterion.name;
+            this.renderEvaluationForm(criterionIndex);
+            this.updateWeightSum();
+
+            if (!isLanguageChange) {
+                this.showPage('page-evaluation');
+            }
+        },
+
+        renderEvaluationForm(criterionIndex) {
+            const form = this.elements.evaluationForm;
+            const t = this.data[this.state.currentLanguage];
+            const criterion = t.criteria[criterionIndex];
+            const evalCriterion = this.data.evaluation[criterionIndex];
+            form.innerHTML = '';
+
+            criterion.subCriteria.forEach((sub, subIndex) => {
+                const evalSub = evalCriterion.subCriteria[subIndex];
+                const subEl = document.createElement('div');
+                subEl.className = 'bg-white p-6 rounded-xl shadow-lg border border-slate-200';
+                
+                subEl.innerHTML = `
+                    <h4 class="text-lg font-semibold text-slate-800 mb-4">${sub.name}</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-2">${t.evaluation.score}</label>
+                            <div class="flex flex-wrap gap-2 radio-btn-group">
+                                ${[1, 2, 3, 4].map(score => `
+                                    <input type="radio" id="score-${sub.id}-${score}" name="score-${sub.id}" value="${score}" class="sr-only" ${evalSub.score === score ? 'checked' : ''}>
+                                    <label for="score-${sub.id}-${score}" class="h-12 w-12 border-2 border-slate-300 rounded-lg font-bold text-slate-600 flex items-center justify-center cursor-pointer hover:border-[#004E64]">${score}</label>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div>
+                            <label for="weight-${sub.id}" class="block text-sm font-medium text-slate-700">${t.evaluation.weight}</label>
+                            <input type="number" id="weight-${sub.id}" value="${evalSub.weight || ''}" min="0" max="100" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2.5 focus:border-[#256EFF] focus:ring focus:ring-[#256EFF]/50">
+                        </div>
+                        <div></div>
+                        <div class="md:col-span-2">
+                            <label for="evidence-${sub.id}" class="block text-sm font-medium text-slate-700">${t.evaluation.evidence}</label>
+                            <div class="relative">
+                                <textarea id="evidence-${sub.id}" rows="4" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2.5 focus:border-[#256EFF] focus:ring focus:ring-[#256EFF]/50">${evalSub.evidence}</textarea>
+                                <button type="button" data-sub-id="${sub.id}" class="ai-analyze-btn absolute bottom-2 right-2 bg-purple-100 text-purple-700 text-xs font-bold py-1 px-2 rounded-md hover:bg-purple-200">${t.evaluation.analyzeBtn}</button>
+                            </div>
+                            <div id="ai-suggestion-${sub.id}" class="mt-2"></div>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="observations-${sub.id}" class="block text-sm font-medium text-slate-700">${t.evaluation.observations}</label>
+                            <textarea id="observations-${sub.id}" rows="2" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm p-2.5 focus:border-[#256EFF] focus:ring focus:ring-[#256EFF]/50">${evalSub.observations}</textarea>
+                        </div>
+                    </div>
+                `;
+
+                subEl.querySelectorAll(`input[name='score-${sub.id}']`).forEach(radio => {
+                    radio.addEventListener('change', (e) => { evalSub.score = parseInt(e.target.value); });
+                });
+                subEl.querySelector(`#weight-${sub.id}`).addEventListener('input', e => { evalSub.weight = parseInt(e.target.value) || 0; this.updateWeightSum(); });
+                subEl.querySelector(`#evidence-${sub.id}`).addEventListener('input', e => { evalSub.evidence = e.target.value; });
+                subEl.querySelector(`#observations-${sub.id}`).addEventListener('input', e => { evalSub.observations = e.target.value; });
+                subEl.querySelector('.ai-analyze-btn').addEventListener('click', (e) => this.handleAIAnalyze(e));
+
+                form.appendChild(subEl);
+            });
+        },
+        
+        updateWeightSum() {
+            if (!this.state.currentCriterionId) return;
+            const criterionIndex = this.data.evaluation.findIndex(c => c.id === this.state.currentCriterionId);
+            const sum = this.data.evaluation[criterionIndex].subCriteria.reduce((acc, sub) => acc + (sub.weight || 0), 0);
+            const sumEl = this.elements.weightSum;
+            sumEl.textContent = `${sum}%`;
+            sumEl.classList.toggle('text-red-500', sum !== 100 && sum > 0);
+            sumEl.classList.toggle('text-[#004E64]', sum === 100 || sum === 0);
+            this.elements.completeEvaluationBtn.disabled = sum !== 100;
+        },
+        
+        processEvaluation() {
+            const t = this.data[this.state.currentLanguage];
+            const criterionIndex = this.data.evaluation.findIndex(c => c.id === this.state.currentCriterionId);
+            const criterion = this.data.evaluation[criterionIndex];
+            const sum = criterion.subCriteria.reduce((acc, sub) => acc + sub.weight, 0);
+            if (sum !== 100) { this.showAlert(t.alerts.error, t.alerts.invalidWeight, 'error'); return; }
+            criterion.weightedAverage = parseFloat(criterion.subCriteria.reduce((acc, sub) => acc + sub.score * (sub.weight / 100), 0).toFixed(2));
+            criterion.completed = true;
+            const criterionName = t.criteria[criterionIndex].name;
+            this.showAlert(t.alerts.success, t.alerts.criteriaCompleted(criterionName, criterion.weightedAverage), 'success');
+            this.renderHomePage();
+            this.showPage('page-home');
+        },
+
+        showResultsPage() {
+            const t = this.data[this.state.currentLanguage];
+            this.elements.aiReportOutput.innerHTML = ''; // Clear previous AI report
+            if(this.data.evaluation.filter(c => c.completed).length === 0) {
+                this.showAlert(t.alerts.attention, t.alerts.noResults, 'warning');
+                return;
+            }
+            this.renderResults();
+            this.showPage('page-results');
+        },
+
+        renderResults() {
+            this.renderRadarChart();
+            this.renderBarChartFilter();
+            if(this.elements.barChartFilter.value) {
+               this.updateBarChart(this.elements.barChartFilter.value);
+            }
+            this.renderResultsTable();
+        },
+
+        renderRadarChart() {
+            const ctx = this.elements.radarChart.getContext('2d');
+            const t = this.data[this.state.currentLanguage];
+            const labels = [];
+            const data = [];
+
+            this.data.evaluation.forEach((evalCriterion, index) => {
+                if (evalCriterion.completed) {
+                    labels.push(t.criteria[index].name);
+                    data.push(evalCriterion.weightedAverage);
+                }
+            });
+
+            if (window.myRadarChart) window.myRadarChart.destroy();
+            window.myRadarChart = new Chart(ctx, {
+                type: 'radar',
+                data: { labels, datasets: [{ label: t.results.radarTitle, data, backgroundColor: 'rgba(37, 110, 255, 0.2)', borderColor: '#256EFF', pointBackgroundColor: '#256EFF', pointBorderColor: '#fff', pointHoverBackgroundColor: '#fff', pointHoverBorderColor: '#256EFF' }] },
+                options: { maintainAspectRatio: false, scales: { r: { angleLines: { color: 'rgba(0, 0, 0, 0.05)' }, grid: { color: 'rgba(0, 0, 0, 0.08)' }, pointLabels: { font: { size: 13, weight: 500 }, color: '#343a40' }, suggestedMin: 0, suggestedMax: 4, ticks: { backdropColor: 'rgba(255, 255, 255, 0.75)', color: '#495057' } } }, plugins: { legend: { display: false } } }
+            });
+        },
+        
+        renderBarChartFilter() {
+            const filter = this.elements.barChartFilter;
+            const t = this.data[this.state.currentLanguage];
+            filter.innerHTML = '';
+            this.data.evaluation.forEach((evalCriterion, index) => {
+                if (evalCriterion.completed) {
+                    const option = document.createElement('option');
+                    option.value = evalCriterion.id;    
+                    option.textContent = t.criteria[index].name;
+                    filter.appendChild(option);
+                }
+            });
+            // Adiciona a opção "Geral" para o gráfico de barras
+            const generalOption = document.createElement('option');
+            generalOption.value = 'all';
+            generalOption.textContent = 'Geral (Todos os Subcritérios)';
+            filter.prepend(generalOption);
+            filter.value = 'all'; // Define "Geral" como padrão
+            this.updateBarChart('all'); // Atualiza o gráfico ao renderizar o filtro
+        },
+        
+        updateBarChart(criterionId) {
+            const t = this.data[this.state.currentLanguage];
+            let labels = [];
+            let data = [];
+
+            if (criterionId === 'all') {
+                // Coleta todos os subcritérios de todos os critérios avaliados
+                this.data.evaluation.forEach((evalCriterion, cIndex) => {
+                    if (evalCriterion.completed) {
+                        evalCriterion.subCriteria.forEach((evalSub, sIndex) => {
+                            labels.push(`${t.criteria[cIndex].name} - ${t.criteria[cIndex].subCriteria[sIndex].name}`);
+                            data.push(evalSub.score);
+                        });
+                    }
+                });
+            } else {
+                const criterionIndex = t.criteria.findIndex(c => c.id === criterionId);
+                const criterionLang = t.criteria[criterionIndex];
+                const criterionEval = this.data.evaluation[criterionIndex];
+                
+                if (!criterionLang) return;
+                labels = criterionLang.subCriteria.map(sub => sub.name);
+                data = criterionEval.subCriteria.map(sub => sub.score);
+            }
+
+            const ctx = this.elements.barChart.getContext('2d');
+            if (window.myBarChart) window.myBarChart.destroy();
+            window.myBarChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: t.evaluation.score, data, backgroundColor: '#A3B18A', borderColor: '#8f9d74', borderWidth: 1, borderRadius: 4 }] },
+                options: { indexAxis: 'y', maintainAspectRatio: false, scales: { x: { beginAtZero: true, max: 4, ticks: { stepSize: 1 } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${t.evaluation.score}: ${c.raw}` } } } }
+            });
+        },
+        
+        renderResultsTable() {
+            const t = this.data[this.state.currentLanguage];
+            const thead = this.elements.resultsTableHead;
+            const tbody = document.getElementById('results-table-body');
+            thead.innerHTML = `<tr>${t.results.tableHead.map(h => `<th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">${h}</th>`).join('')}</tr>`;
+            tbody.innerHTML = '';
+
+            this.data.evaluation.forEach((evalCriterion, cIndex) => {
+                if(evalCriterion.completed){
+                    evalCriterion.subCriteria.forEach((evalSub, sIndex) => {
+                        const row = tbody.insertRow();
+                        row.className = "hover:bg-slate-50 transition-colors";
+                        const criterionName = t.criteria[cIndex].name;
+                        const subCriterionName = t.criteria[cIndex].subCriteria[sIndex].name;
+                        row.innerHTML = `<td class="px-6 py-4 text-sm text-slate-800">${criterionName}</td><td class="px-6 py-4 text-sm text-slate-800">${subCriterionName}</td><td class="px-6 py-4 text-sm text-slate-800 font-bold text-center">${evalSub.score}</td><td class="px-6 py-4 text-sm text-slate-800 text-center">${evalSub.weight}%</td><td class="px-6 py-4 text-sm text-slate-600 max-w-xs">${evalSub.evidence}</td><td class="px-6 py-4 text-sm text-slate-600 max-w-xs">${evalSub.observations}</td>`;
+                    });
+                }
+            });
+        },
+
+        filterTable(searchTerm) {
+            const rows = document.getElementById('results-table-body').rows;
+            const term = searchTerm.toLowerCase();
+            for (let row of rows) {
+                const evidenceCell = row.cells[4].textContent;
+                const observationsCell = row.cells[5].textContent;
+                const text = (evidenceCell + observationsCell).toLowerCase();
+                row.style.display = text.includes(term) ? '' : 'none';
+            }
+        },
+
+        exportToPdf() {
+            const { jsPDF } = window.jspdf;
+            const t = this.data[this.state.currentLanguage];
+            const reportContent = document.getElementById('report-content');
+            this.showAlert(t.alerts.processing, t.alerts.pdfGenerating, 'info');
+            html2canvas(reportContent, { scale: 2, useCORS: true, backgroundColor: '#f8f9fa' })
+            .then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                let heightLeft = pdfHeight; let position = 0;
+                pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+                heightLeft -= pdf.internal.pageSize.getHeight();
+                while (heightLeft >= 0) { position = heightLeft - pdfHeight; pdf.addPage(); pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight); heightLeft -= pdf.internal.pageSize.getHeight(); }
+                pdf.save(`report_${t.platformName.replace(/\s/g, '_')}.pdf`);
+                this.hideAlert();
+            }).catch(err => { this.showAlert(t.alerts.error, t.alerts.pdfError, 'error'); });
+        },
+        
+        showAlert(title, message, type = 'info') {
+            const modal = this.elements.alertModalContainer;
+            const icons = { success: { html: '✔', bg: 'bg-green-100', text: 'text-green-600' }, error: { html: '✖', bg: 'bg-red-100', text: 'text-red-600' }, warning: { html: '!', bg: 'bg-yellow-100', text: 'text-yellow-600' }, info: { html: 'i', bg: 'bg-blue-100', text: 'text-blue-600' } };
+            const selected = icons[type];
+            this.elements.alertIcon.innerHTML = selected.html; this.elements.alertIcon.className = `mx-auto flex items-center justify-center h-16 w-16 rounded-full font-bold text-3xl ${selected.bg} ${selected.text}`;
+            this.elements.alertTitle.textContent = title; this.elements.alertMessage.textContent = message;
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0', 'scale-95'), 10);
+        },
+
+        hideAlert() {
+             const modal = this.elements.alertModalContainer;
+             modal.classList.add('opacity-0', 'scale-95');
+             setTimeout(() => modal.classList.add('hidden'), 300);
+        },
+
+        resetAllData() {
+            this.data.evaluation.forEach(c => {
+                c.weightedAverage = 0; c.completed = false;
+                c.subCriteria.forEach(sub => { sub.score = 0; sub.weight = 0; sub.evidence = ''; sub.observations = ''; });
+            });
+            this.renderHomePage();
+        },
+
+        toggleChatbot(forceShow = null) {
+            const container = this.elements.chatbot.container;
+            const isHidden = container.classList.contains('hidden');
+            const show = forceShow === null ? isHidden : forceShow;
+            if (show) {
+                this.elements.chatbot.iconOpen.classList.add('opacity-0'); this.elements.chatbot.iconClose.classList.remove('opacity-0');
+                container.classList.remove('hidden');
+                setTimeout(() => container.classList.remove('opacity-0', 'scale-95'), 10);
+            } else {
+                this.elements.chatbot.iconOpen.classList.remove('opacity-0'); this.elements.chatbot.iconClose.classList.add('opacity-0');
+                container.classList.add('opacity-0', 'scale-95');
+                setTimeout(() => container.classList.add('hidden'), 300);
+            }
+        },
+
+        handleChatMessage(event) {
+            event.preventDefault();
+            const input = this.elements.chatbot.input;
+            const userInput = input.value.trim();
+            if (userInput === '') return;
+            this.addMessageToChat(userInput, 'user');
+            input.value = '';
+            this.elements.chatbot.typingIndicator.classList.remove('hidden');
+            setTimeout(() => {
+                this.elements.chatbot.typingIndicator.classList.add('hidden');
+                const botResponse = this.getBotResponse(userInput);
+                this.addMessageToChat(botResponse, 'bot');
+            }, 1200);
+        },
+        
+        speakText(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = this.state.currentLanguage;
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(utterance);
+            } else {
+                this.showAlert("Unsupported", "Text-to-speech is not supported by your browser.", "warning");
+            }
+        },
+
+        addMessageToChat(message, sender) {
+            const messagesContainer = this.elements.chatbot.messages;
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = 'flex flex-col';
+            const messageEl = document.createElement('div');
+            messageEl.textContent = message;
+
+            if (sender === 'user') {
+                messageWrapper.classList.add('items-end');
+                messageEl.className = 'p-3 rounded-2xl rounded-br-lg bg-blue-600 text-white max-w-xs';
+                messageWrapper.appendChild(messageEl);
+            } else {
+                messageWrapper.classList.add('items-start');
+                const botMessageContainer = document.createElement('div');
+                botMessageContainer.className = 'flex items-end gap-2';
+                messageEl.className = 'p-3 rounded-2xl rounded-bl-lg bg-slate-200 text-slate-800 max-w-xs';
+                const speakBtn = document.createElement('button');
+                speakBtn.className = 'w-6 h-6 text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0';
+                speakBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path d="M7.429 4.542a3.571 3.571 0 00-3.57 3.57v3.718a3.571 3.571 0 003.57 3.57h.002a3.571 3.571 0 003.57-3.57V8.112a3.571 3.571 0 00-3.57-3.57H7.43zm.002 9a2.143 2.143 0 01-2.142-2.142V8.112a2.143 2.143 0 012.142-2.142h-.002a2.143 2.143 0 012.142 2.142v3.718a2.143 2.143 0 01-2.142 2.142h.002z" /><path d="M10 4.5a.5.5 0 00-1 0v11a.5.5 0 001 0v-11z" /><path d="M12.571 6.643a.5.5 0 000 .714 2.143 2.143 0 010 5.146.5.5 0 000 .714 3.571 3.571 0 000-6.574z" /></svg>`;
+                speakBtn.onclick = () => this.speakText(message);
+                botMessageContainer.appendChild(messageEl);
+                botMessageContainer.appendChild(speakBtn);
+                messageWrapper.appendChild(botMessageContainer);
+            }
+            messageWrapper.classList.add('chat-message');
+            messagesContainer.appendChild(messageWrapper);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        },
+
+        getBotResponse(userInput) {
+            const t = this.data[this.state.currentLanguage];
+            const lowerInput = userInput.toLowerCase();
+            const keywords = Object.keys(t.knowledgeBase);
+            let bestMatch = null;
+            let highestScore = 0;
+
+            keywords.forEach(key => {
+                const keyWords = key.split(' ');
+                let score = 0;
+                keyWords.forEach(word => {
+                    if (lowerInput.includes(word)) {
+                        score++;
+                    }
+                });
+                if (score > highestScore) {
+                    highestScore = score;
+                    bestMatch = key;
+                }
+            });
+            
+            if (highestScore > 0) {
+                if(lowerInput.includes(t.chatbot.thankYou.split('!')[0].toLowerCase().slice(0, 5))) return t.chatbot.thankYou;
+                return t.knowledgeBase[bestMatch];
+            }
+
+            return t.chatbot.defaultResponse;
+        },
+
+        handleAIAnalyze(event) {
+            const subId = event.target.dataset.subId;
+            const evidenceText = document.getElementById(`evidence-${subId}`).value;
+            if (!evidenceText) return;
+            
+            const suggestion = this.analyzeEvidence(evidenceText);
+            const container = document.getElementById(`ai-suggestion-${subId}`);
+            const t = this.data[this.state.currentLanguage];
+            
+            container.innerHTML = `
+                <div class="ai-suggestion bg-purple-50 border border-purple-200 p-3 rounded-lg mt-2 text-sm">
+                    <p class="font-bold text-purple-800">${t.evaluation.aiSuggestion}</p>
+                    <p class="text-purple-700 mt-1">${suggestion.justification}</p>
+                    <button data-score="${suggestion.score}" data-sub-id="${subId}" class="accept-ai-btn mt-2 bg-purple-600 text-white text-xs font-bold py-1 px-3 rounded-md hover:bg-purple-700">${t.evaluation.acceptBtn} ${suggestion.score}</button>
+                </div>
+            `;
+            container.querySelector('.accept-ai-btn').addEventListener('click', (e) => this.acceptAISuggestion(e));
+        },
+
+        acceptAISuggestion(event) {
+            const button = event.target;
+            const score = parseInt(button.dataset.score);
+            const subId = button.dataset.subId;
+            
+            document.getElementById(`score-${subId}-${score}`).checked = true;
+
+            const criterionIndex = this.data.evaluation.findIndex(c => c.id === this.state.currentCriterionId);
+            const subCriterionIndex = this.data.evaluation[criterionIndex].subCriteria.findIndex(s => s.id === subId);
+            this.data.evaluation[criterionIndex].subCriteria[subCriterionIndex].score = score;
+            
+            document.getElementById(`ai-suggestion-${subId}`).innerHTML = '';
+        },
+
+        analyzeEvidence(text) {
+            const positiveKeywords = ['bom', 'excelente', 'claro', 'fácil', 'rápido', 'intuitivo', 'completo', 'flexível', 'good', 'excellent', 'clear', 'easy', 'fast', 'intuitive', 'complete', 'flexible'];
+            const negativeKeywords = ['ruim', 'difícil', 'lento', 'confuso', 'limitado', 'travou', 'erro', 'bad', 'difficult', 'slow', 'confusing', 'limited', 'crashed', 'error'];
+            
+            let score = 2;
+            let justification = [];
+
+            positiveKeywords.forEach(kw => {
+                if (text.toLowerCase().includes(kw)) {
+                    score++;
+                    if (justification.indexOf(kw) === -1) justification.push(kw);
+                }
+            });
+            negativeKeywords.forEach(kw => {
+                if (text.toLowerCase().includes(kw)) {
+                    score--;
+                    if (justification.indexOf(kw) === -1) justification.push(kw);
+                }
+            });
+
+            score = Math.max(1, Math.min(4, score));
+
+            let justText = `Nota ${score}.`;
+            if (justification.length > 0) {
+                justText += ` Justificativa baseada nas palavras: ${justification.join(', ')}.`;
+            } else {
+                 justText += ` Nenhuma palavra-chave específica foi encontrada para análise.`;
+            }
+            return { score, justification: justText };
+        },
+        
+        handleCriterionNavigation(direction) {
+            const criteriaIds = this.data.pt.criteria.map(c => c.id);
+            const currentIndex = criteriaIds.findIndex(id => id === this.state.currentCriterionId);
+            let nextIndex = currentIndex + direction;
+
+            if (nextIndex >= criteriaIds.length) nextIndex = 0;
+            if (nextIndex < 0) nextIndex = criteriaIds.length - 1;
+            
+            this.showEvaluationPage(criteriaIds[nextIndex]);
+        },
+
+        renderAIReport() {
+            const outputDiv = this.elements.aiReportOutput;
+            const t = this.data[this.state.currentLanguage];
+            const completedEvals = this.data.evaluation.filter(c => c.completed);
+            
+            if (completedEvals.length === 0) return;
+
+            const summary = this.generateFeedbackSummary(completedEvals, t);
+            const {level, justification} = this.classifyMaturity(completedEvals, t);
+
+            outputDiv.innerHTML = `
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-700">${t.results.qualitativeSummary}</h3>
+                    <div contenteditable="true" class="mt-2 p-3 bg-slate-50 border rounded-md min-h-[100px] focus:outline-none focus:ring-2 focus:ring-purple-400">${summary}</div>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-700">${t.results.maturityLevel}</h3>
+                    <div class="mt-2">
+                        <p class="font-bold text-xl text-purple-700">${level}</p>
+                        <div contenteditable="true" class="mt-1 p-3 bg-slate-50 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400">${justification}</div>
+                    </div>
+                </div>
+            `;
+        },
+
+        generateFeedbackSummary(evals, t) {
+            evals.sort((a, b) => b.weightedAverage - a.weightedAverage);
+            const strongest = evals[0];
+            const weakest = evals[evals.length - 1];
+            const strongestName = t.criteria.find(c => c.id === strongest.id).name;
+            const weakestName = t.criteria.find(c => c.id === weakest.id).name;
+            
+            let summary = `A plataforma demonstra um forte desempenho em ${strongestName}, com uma avaliação notável de ${strongest.weightedAverage}. `;
+            if (strongest.id !== weakest.id) {
+                summary += `No entanto, requer melhorias significativas em ${weakestName}, que apresentou a menor pontuação (${weakest.weightedAverage}). `;
+            }
+            summary += `Recomenda-se focar os esforços de desenvolvimento nas áreas com menor avaliação para alcançar um equilíbrio pedagógico e técnico mais robusto.`;
+            return summary;
+        },
+
+        classifyMaturity(evals, t) {
+            const overallScore = evals.reduce((acc, curr) => acc + curr.weightedAverage, 0) / evals.length;
+            let level, justification;
+
+            if (overallScore > 3.5) {
+                level = t.results.maturityLevels.referencia;
+                justification = `Com uma pontuação geral excepcional de ${overallScore.toFixed(2)}, a plataforma se estabelece como uma referência no mercado, demonstrando excelência na maioria dos critérios avaliados.`;
+            } else if (overallScore > 2.5) {
+                level = t.results.maturityLevels.avancada;
+                justification = `A pontuação geral de ${overallScore.toFixed(2)} indica uma plataforma avançada e robusta. Apresenta muitas forças, com algumas oportunidades pontuais de melhoria para atingir o nível de excelência.`;
+            } else if (overallScore > 1.5) {
+                level = t.results.maturityLevels.desenvolvimento;
+                justification = `Com uma pontuação geral de ${overallScore.toFixed(2)}, a plataforma está em fase de desenvolvimento. Possui uma base funcional, mas necessita de atenção significativa em diversas áreas-chave para ser competitiva.`;
+            } else {
+                level = t.results.maturityLevels.inicial;
+                justification = `A pontuação geral de ${overallScore.toFixed(2)} sugere que a plataforma está em um estágio inicial. É crucial priorizar melhorias fundamentais nos critérios de menor pontuação para construir uma base sólida.`;
+            }
+
+            return { level, justification };
+        },
+
+        // --- Novas Funções para Acessibilidade ---
+        toggleAccessibilityModal(show) {
+            const modal = this.elements.accessibilityModalContainer;
+            if (show) {
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0', 'scale-95'), 10);
+            } else {
+                modal.classList.add('opacity-0', 'scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+        },
+
+        setFontSize(size) {
+            const body = document.body;
+            body.classList.remove('text-sm', 'text-base', 'text-lg');
+            if (size === 'sm') {
+                body.classList.add('text-sm');
+            } else if (size === 'md') {
+                body.classList.add('text-base');
+            } else if (size === 'lg') {
+                body.classList.add('text-lg');
+            }
+        },
+
+        setContrast(mode) {
+            const body = document.body;
+            if (mode === 'high') {
+                body.classList.add('bg-black', 'text-white');
+                body.classList.remove('bg-[#f8f9fa]', 'text-[#343a40]');
+            } else {
+                body.classList.remove('bg-black', 'text-white');
+                body.classList.add('bg-[#f8f9fa]', 'text-[#343a40]');
+            }
+        },
+
+        toggleLibrasWindow() {
+            const librasPlaceholder = this.elements.librasWindowPlaceholder;
+            librasPlaceholder.classList.toggle('hidden');
+            // Aqui você pode adicionar a lógica para carregar/descarregar um widget de Libras
+            // Ex: if (!librasPlaceholder.classList.contains('hidden')) { carregarWidgetLibras(); } else { descarregarWidgetLibras(); }
+        },
+
+        // --- Novas Funções para Onboarding ---
+        startOnboardingTour() {
+            if (this.state.onboardingCompleted) return;
+
+            const t = this.data[this.state.currentLanguage].onboarding;
+            const steps = [
+                {
+                    element: '#nav-home',
+                    title: t.step1_title,
+                    text: t.step1_text,
+                    placement: 'bottom' // Posição do popup em relação ao elemento
+                },
+                {
+                    element: '#criteria-grid',
+                    title: t.step2_title,
+                    text: t.step2_text,
+                    placement: 'top'
+                },
+                {
+                    element: '#page-evaluation', // Não é um elemento ideal, mas para o tour inicial funciona
+                    title: t.step3_title,
+                    text: t.step3_text,
+                    placement: 'bottom',
+                    requiresPage: 'page-evaluation' // Indica que este passo só funciona nesta página
+                },
+                {
+                    element: '#page-results', // Similar, não é ideal
+                    title: t.step4_title,
+                    text: t.step4_text,
+                    placement: 'top',
+                    requiresPage: 'page-results'
+                }
+            ];
+
+            // Adiciona o overlay e o popup inicial
+            const overlay = document.createElement('div');
+            overlay.className = 'tour-overlay';
+            document.body.appendChild(overlay);
+
+            const popup = document.createElement('div');
+            popup.className = 'tour-popup';
+            popup.innerHTML = `
+                <h2 class="text-xl font-bold text-[#004E64] mb-3">${t.welcome}</h2>
+                <p class="text-slate-700 mb-4">${t.finish_text}</p>
+                <button id="tour-next-btn" class="bg-[#004E64] text-white font-bold py-2 px-4 rounded-lg hover:bg-[#003a4d] transition-colors">${t.next_btn}</button>
+                <button id="tour-skip-btn" class="ml-4 text-slate-500 hover:text-slate-700">${t.skip_btn}</button>
+            `;
+            document.body.appendChild(popup);
+
+            const nextBtn = document.getElementById('tour-next-btn');
+            const skipBtn = document.getElementById('tour-skip-btn');
+
+            const showStep = (stepIndex) => {
+                this.state.currentOnboardingStep = stepIndex;
+                if (stepIndex >= steps.length) {
+                    this.endOnboardingTour();
+                    return;
+                }
+
+                const step = steps[stepIndex];
+                const targetElement = document.querySelector(step.element);
+
+                if (!targetElement) {
+                    console.warn(`Elemento ${step.element} não encontrado para o passo ${stepIndex}. Pulando passo.`);
+                    showStep(stepIndex + 1); // Pula para o próximo passo se o elemento não for encontrado
+                    return;
+                }
+
+                // Esconde todas as páginas e mostra a necessária para o tour
+                if (step.requiresPage) {
+                    this.showPage(step.requiresPage);
+                } else {
+                    // Garante que a home esteja visível para os primeiros passos
+                    this.showPage('page-home');
+                }
+
+                // Remove highlight anterior
+                document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+                // Adiciona highlight ao elemento atual
+                targetElement.classList.add('tour-highlight');
+
+                popup.querySelector('h2').textContent = step.title;
+                popup.querySelector('p').textContent = step.text;
+                nextBtn.textContent = (stepIndex === steps.length - 1) ? t.end_btn : t.next_btn;
+
+
+                // Posicionamento básico do popup (pode ser mais sofisticado)
+                const rect = targetElement.getBoundingClientRect();
+                if (step.placement === 'bottom') {
+                    popup.style.top = `${rect.bottom + 10}px`;
+                    popup.style.left = `${rect.left + (rect.width / 2) - (popup.offsetWidth / 2)}px`;
+                } else if (step.placement === 'top') {
+                    popup.style.top = `${rect.top - popup.offsetHeight - 10}px`;
+                    popup.style.left = `${rect.left + (rect.width / 2) - (popup.offsetWidth / 2)}px`;
+                } else if (step.placement === 'right') {
+                    popup.style.top = `${rect.top + (rect.height / 2) - (popup.offsetHeight / 2)}px`;
+                    popup.style.left = `${rect.right + 10}px`;
+                } else if (step.placement === 'left') {
+                    popup.style.top = `${rect.top + (rect.height / 2) - (popup.offsetHeight / 2)}px`;
+                    popup.style.left = `${rect.left - popup.offsetWidth - 10}px`;
+                }
+
+                // Garante que o popup não saia da tela
+                popup.style.left = Math.max(0, Math.min(window.innerWidth - popup.offsetWidth, parseInt(popup.style.left))) + 'px';
+                popup.style.top = Math.max(0, Math.min(window.innerHeight - popup.offsetHeight, parseInt(popup.style.top))) + 'px';
+
+                // Ajusta o z-index do elemento alvo para que fique acima do overlay
+                targetElement.style.position = 'relative';
+                targetElement.style.zIndex = '9999';
+            };
+
+            nextBtn.onclick = () => showStep(this.state.currentOnboardingStep + 1);
+            skipBtn.onclick = () => this.endOnboardingTour();
+
+            // Inicia o tour
+            showStep(0);
+        },
+
+        endOnboardingTour() {
+            document.querySelectorAll('.tour-overlay, .tour-popup').forEach(el => el.remove());
+            document.querySelectorAll('.tour-highlight').forEach(el => {
+                el.classList.remove('tour-highlight');
+                el.style.zIndex = ''; // Reseta o z-index
+                el.style.position = ''; // Reseta a posição se foi alterada
+            });
+            this.state.onboardingCompleted = true;
+            localStorage.setItem('onboardingCompleted', 'true');
+            this.showPage('page-home'); // Volta para a página inicial
+        }
+    };
+    window.addEventListener('DOMContentLoaded', () => App.init());
+    </script>
+</body>
+</html>
